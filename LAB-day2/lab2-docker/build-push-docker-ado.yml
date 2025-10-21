@@ -1,0 +1,82 @@
+# ----------------------------------------------------------
+# 🧩 Azure DevOps Pipeline 101
+# Build and Push Super Mario Docker Image with Dynamic Tag
+# ----------------------------------------------------------
+# This pipeline:
+#  1️⃣ Runs on every push to the main branch
+#  2️⃣ Reads the version number from version.txt
+#  3️⃣ Builds a Docker image
+#  4️⃣ Pushes it to Docker Hub with the new version tag
+# ----------------------------------------------------------
+
+name: Build-and-Push-SuperMario-Image
+
+# ----------------------------------------------------------
+# 🧭 Trigger
+# Run this pipeline when code is pushed to the main branch
+# ----------------------------------------------------------
+trigger:
+  branches:
+    include:
+      - main
+
+# ----------------------------------------------------------
+# 🧰 Variables
+# VERSION will be dynamically read from version.txt during the run
+# DOCKER credentials will be securely referenced from pipeline variables
+# ----------------------------------------------------------
+variables:
+  imageName: 'raghuthesecurityexpert/supermariogitopsproject'
+
+# ----------------------------------------------------------
+# ⚙️ Job Section
+# Each job runs in a fresh agent environment
+# ----------------------------------------------------------
+jobs:
+- job: BuildAndPushDockerImage
+  displayName: "Build and Push Super Mario Docker Image"
+  pool:
+    vmImage: 'ubuntu-latest'  # Use Microsoft-hosted Ubuntu VM
+
+  steps:
+    # ------------------------------------------------------
+    # 🧱 Step 1: Checkout Code
+    # Fetch the repository files into the pipeline workspace
+    # ------------------------------------------------------
+    - checkout: self
+
+    # ------------------------------------------------------
+    # 🧮 Step 2: Read Version Number Dynamically
+    # Use bash to read and increment the version number
+    # ------------------------------------------------------
+    - script: |
+        echo "Reading current version..."
+        VERSION=$(cat version.txt)
+        echo "Current version: $VERSION"
+        NEW_VERSION=$((VERSION + 1))
+        echo "New version: $NEW_VERSION"
+        echo "##vso[task.setvariable variable=VERSION]$NEW_VERSION"
+      displayName: "Read and Increment Version Number"
+
+    # ------------------------------------------------------
+    # 🔐 Step 3: Log in to Docker Hub
+    # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are stored as secrets
+    # ------------------------------------------------------
+    - script: |
+        echo "Logging into Docker Hub..."
+        echo "$(DOCKERHUB_TOKEN)" | docker login -u "$(DOCKERHUB_USERNAME)" --password-stdin
+      displayName: "Docker Login"
+      env:
+        DOCKERHUB_USERNAME: $(DOCKERHUB_USERNAME)
+        DOCKERHUB_TOKEN: $(DOCKERHUB_TOKEN)
+
+    # ------------------------------------------------------
+    # 🐳 Step 4: Build and Push Docker Image
+    # Builds the Docker image and tags it with the dynamic version
+    # ------------------------------------------------------
+    - script: |
+        echo "Building Docker image..."
+        docker build -t docker.io/$(imageName):$(VERSION) .
+        echo "Pushing Docker image to Docker Hub..."
+        docker push docker.io/$(imageName):$(VERSION)
+      displayName: "Build and Push Docker Image"

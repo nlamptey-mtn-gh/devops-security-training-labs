@@ -1,0 +1,61 @@
+# ----------------------------------------------------------
+# Azure DevOps Pipeline 101
+# ----------------------------------------------------------
+# This pipeline runs automatically every time code is pushed
+# to the main branch. It prints messages and demonstrates
+# how to use variables in Azure DevOps (e.g., VERSION).
+# ----------------------------------------------------------
+
+# Pipeline Name
+name: Run Shell Commands
+
+# ----------------------------------------------------------
+#  Trigger Section
+# Defines when the pipeline runs.
+# In this case, it runs on every push to the main branch.
+# ----------------------------------------------------------
+trigger:
+  branches:
+    include:
+      - main
+
+# ----------------------------------------------------------
+#  Variables
+# Variables can be defined globally and used in any step.
+# VERSION uses the built-in pipeline run number variable.
+# ----------------------------------------------------------
+variables:
+  VERSION: $(Build.BuildNumber)
+
+# ----------------------------------------------------------
+#  Pool
+# Defines the build environment (Ubuntu VM in this case).
+# ----------------------------------------------------------
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ----------------------------------------------------------
+#  Steps Section
+# Each pipeline runs a list of steps.
+# Steps can be scripts, tasks, or templates.
+# ----------------------------------------------------------
+steps:
+  # --------------------------------------------------------
+  # Step 1: Checkout code (optional)
+  # Uncomment this step if your commands need repo files.
+  # --------------------------------------------------------
+  # - checkout: self
+
+  # --------------------------------------------------------
+  # Step 2: Run a simple shell command
+  # Demonstrates running commands directly in Bash.
+  # --------------------------------------------------------
+  - script: echo "Hello Security Gurus! This is our first Azure DevOps Pipeline"
+    displayName: "Echo a String"
+
+  # --------------------------------------------------------
+  # Step 3: Use the VERSION variable
+  # Demonstrates referencing Azure DevOps variables.
+  # --------------------------------------------------------
+  - script: echo "The version is $(VERSION)"
+    displayName: "Print the Version Number"

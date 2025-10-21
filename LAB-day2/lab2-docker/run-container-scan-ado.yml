@@ -1,0 +1,106 @@
+# ----------------------------------------------------------
+# 🧩 Azure DevOps Pipeline 101
+# Run Container Image Scan on Super Mario Docker Image with Quality Gate
+# ----------------------------------------------------------
+# This pipeline:
+#  1️⃣ Triggers on push to the main branch
+#  2️⃣ Pulls the latest Super Mario Docker image from Docker Hub
+#  3️⃣ Scans it with Trivy for vulnerabilities
+#  4️⃣ Fails the build if CRITICAL or HIGH vulnerabilities are found
+# ----------------------------------------------------------
+
+name: Run-Container-Scan-With-Trivy
+
+# ----------------------------------------------------------
+# 🧭 Trigger
+# Run this pipeline on every push to the main branch
+# ----------------------------------------------------------
+trigger:
+  branches:
+    include:
+      - main
+
+# ----------------------------------------------------------
+# 🌍 Global Variables
+# VERSION is read dynamically from version.txt
+# DOCKER credentials are stored securely in Azure DevOps Library
+# ----------------------------------------------------------
+variables:
+  imageName: 'raghuthesecurityexpert/supermariogitopsproject'
+
+# ----------------------------------------------------------
+# ⚙️ Job Section
+# Single job that runs the container vulnerability scan
+# ----------------------------------------------------------
+jobs:
+- job: RunContainerImageScan
+  displayName: "Run Container Image Scan on Super Mario Docker Image"
+  pool:
+    vmImage: 'ubuntu-latest'  # Microsoft-hosted Ubuntu agent
+
+  steps:
+    # ------------------------------------------------------
+    # 🧱 Step 1: Checkout Repository
+    # Pull the repo to access version.txt and other files
+    # ------------------------------------------------------
+    - checkout: self
+
+    # ------------------------------------------------------
+    # 🧮 Step 2: Read Version Number Dynamically
+    # Read version.txt and increment for tagging
+    # ------------------------------------------------------
+    - script: |
+        echo "Reading version number..."
+        VERSION=$(cat version.txt)
+        echo "Version read from file: $VERSION"
+        NEW_VERSION=$((VERSION + 1))
+        echo "Computed image version: $NEW_VERSION"
+        echo "##vso[task.setvariable variable=VERSION]$NEW_VERSION"
+      displayName: "Read and Set Version Variable"
+
+    # ------------------------------------------------------
+    # 🔐 Step 3: Login to Docker Hub
+    # Authenticate securely using credentials stored in ADO
+    # ------------------------------------------------------
+    - script: |
+        echo "Logging into Docker Hub..."
+        echo "$(DOCKERHUB_TOKEN)" | docker login -u "$(DOCKERHUB_USERNAME)" --password-stdin
+      displayName: "Docker Login"
+      env:
+        DOCKERHUB_USERNAME: $(DOCKERHUB_USERNAME)
+        DOCKERHUB_TOKEN: $(DOCKERHUB_TOKEN)
+
+    # ------------------------------------------------------
+    # 🐳 Step 4: Pull the Docker Image from Docker Hub
+    # Pulls and saves the Docker image as a tarball for scanning
+    # ------------------------------------------------------
+    - script: |
+        echo "Pulling Super Mario Docker image..."
+        docker pull docker.io/$(imageName):$(VERSION)
+        echo "Saving image as tarball..."
+        docker save -o supermariolatestdockerimage.tar docker.io/$(imageName):$(VERSION)
+      displayName: "Get Docker Image from Docker Hub"
+
+    # ------------------------------------------------------
+    # 🧰 Step 5: Install Trivy (Aqua Security Vulnerability Scanner)
+    # Installs Trivy CLI for scanning container images
+    # ------------------------------------------------------
+    - script: |
+        echo "Installing Trivy vulnerability scanner..."
+        sudo apt-get update -y
+        sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update -y
+        sudo apt-get install trivy -y
+        trivy --version
+      displayName: "Install Trivy Vulnerability Scanner"
+
+    # ------------------------------------------------------
+    # 🕵️ Step 6: Run Trivy Vulnerability Scan (Quality Gate)
+    # Scans the Docker image tarball and fails on CRITICAL/HIGH vulnerabilities
+    # ------------------------------------------------------
+    - script: |
+        echo "Running Trivy vulnerability scan on image tarball..."
+        trivy image --input supermariolatestdockerimage.tar --exit-code 1 --severity CRITICAL,HIGH
+      displayName: "Run Trivy Scan with Quality Gate"

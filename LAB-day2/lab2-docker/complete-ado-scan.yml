@@ -1,0 +1,168 @@
+# ----------------------------------------------------------
+# 🧩 Azure DevOps Pipeline 101: CI + Security Scans
+# ----------------------------------------------------------
+# This pipeline automates:
+#  1. Building and testing your Java project
+#  2. Running SAST (SonarQube), SCA (Snyk), and DAST (ZAP)
+#  3. Demonstrates DevSecOps stages end-to-end
+# ----------------------------------------------------------
+
+name: Build-Test-And-Secure
+
+# ----------------------------------------------------------
+# 🧭 Trigger
+# Defines when this pipeline will run.
+# In this case, it runs automatically on every push to 'main'.
+# ----------------------------------------------------------
+trigger:
+  branches:
+    include:
+      - main
+
+# ----------------------------------------------------------
+# 🌍 Global Variables
+# Store non-sensitive values here.
+# Sensitive tokens (e.g., SONAR_TOKEN, SNYK_TOKEN) should be
+# stored securely in Azure Key Vault or the Library (as secrets).
+# ----------------------------------------------------------
+variables:
+  sonarProjectKey: 'dotnetgithubactionsproject'
+  sonarOrganization: 'dotnetgithubactionsorg'
+  sonarHostUrl: 'https://sonarcloud.io'
+  zapTarget: 'http://testphp.vulnweb.com/'   # Intentionally vulnerable site for training
+
+# ----------------------------------------------------------
+# ⚙️ Jobs Section
+# Each job runs independently, but can depend on previous ones.
+# ----------------------------------------------------------
+stages:
+
+# ==========================================================
+# 🧱 Stage 1: Build and Run SAST (SonarQube)
+# ==========================================================
+- stage: Build
+  displayName: "Build, Test, and Run SAST Scan"
+  jobs:
+  - job: BuildAndSAST
+    displayName: "Run Unit Tests and SonarQube Analysis"
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+      # ------------------------------------------------------
+      # 🧱 Step 1: Checkout source code
+      # Pulls repository files into the build agent workspace.
+      # ------------------------------------------------------
+      - checkout: self
+
+      # ------------------------------------------------------
+      # ☕ Step 2: Set up Java (JDK 21)
+      # Required for building Maven-based Java projects.
+      # ------------------------------------------------------
+      - task: UseJavaVersion@1
+        displayName: "Set up JDK 21"
+        inputs:
+          versionSpec: '21'
+          jdkArchitecture: 'x64'
+          jdkSourceOption: 'PreInstalled'
+
+      # ------------------------------------------------------
+      # ⚙️ Step 3: Build project and run SonarCloud scan
+      # SonarCloud performs Static Application Security Testing (SAST)
+      # to detect code quality and security issues.
+      # ------------------------------------------------------
+      - script: |
+          echo "🏗️ Building the project and running SonarCloud analysis..."
+          mvn -B verify sonar:sonar \
+            -Dsonar.projectKey=$(sonarProjectKey) \
+            -Dsonar.organization=$(sonarOrganization) \
+            -Dsonar.host.url=$(sonarHostUrl) \
+            -Dsonar.token=$(SONAR_TOKEN)
+        displayName: "Run SonarCloud (SAST)"
+        env:
+          SONAR_TOKEN: $(SONAR_TOKEN)  # Stored securely in ADO Library or Key Vault
+
+# ==========================================================
+# 🧩 Stage 2: Run SCA (Snyk) Dependency Scan
+# ==========================================================
+- stage: SCA
+  displayName: "Run Software Composition Analysis (Snyk)"
+  dependsOn: Build
+  jobs:
+  - job: SnykScan
+    displayName: "Run Snyk Vulnerability Scan"
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+      # ------------------------------------------------------
+      # 🧱 Step 1: Checkout Code
+      # Ensure the agent has access to your source files.
+      # ------------------------------------------------------
+      - checkout: self
+
+      # ------------------------------------------------------
+      # 🧰 Step 2: Install Snyk CLI (Alternative to GitHub action)
+      # Azure DevOps runs Snyk through a script instead of an action.
+      # ------------------------------------------------------
+      - script: |
+          echo "🔍 Installing Snyk CLI..."
+          npm install -g snyk
+        displayName: "Install Snyk CLI"
+
+      # ------------------------------------------------------
+      # 🔒 Step 3: Run Snyk Scan
+      # Detects vulnerable open-source dependencies.
+      # ------------------------------------------------------
+      - script: |
+          echo "🔎 Running Snyk SCA Scan..."
+          snyk test --all-projects || true
+        displayName: "Run Snyk Vulnerability Scan"
+        env:
+          SNYK_TOKEN: $(SNYK_TOKEN)
+
+# ==========================================================
+# 🌐 Stage 3: Run DAST (OWASP ZAP) Baseline Scan
+# ==========================================================
+- stage: DAST
+  displayName: "Run DAST (OWASP ZAP) Web App Scan"
+  dependsOn: SCA
+  jobs:
+  - job: ZAPScan
+    displayName: "Run OWASP ZAP Baseline Scan"
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+      # ------------------------------------------------------
+      # 🧱 Step 1: Checkout Code (optional)
+      # Required if your app or test config is stored in the repo.
+      # ------------------------------------------------------
+      - checkout: self
+
+      # ------------------------------------------------------
+      # 🕵️ Step 2: Run OWASP ZAP Baseline Scan
+      # The baseline scan performs passive security checks.
+      # This uses the official OWASP ZAP Docker image.
+      # ------------------------------------------------------
+      - script: |
+          echo "🌐 Running OWASP ZAP Baseline DAST Scan..."
+          docker run --rm -v $(System.DefaultWorkingDirectory):/zap/wrk/:rw \
+            owasp/zap2docker-stable zap-baseline.py \
+            -t $(zapTarget) \
+            -r zap_report.html \
+            -J zap_report.json \
+            -w zap_warnings.txt \
+            -m 5
+        displayName: "Run OWASP ZAP Baseline Scan"
+
+      # ------------------------------------------------------
+      # 📊 Step 3: Publish ZAP Reports as Pipeline Artifacts
+      # This makes your scan reports downloadable from ADO UI.
+      # ------------------------------------------------------
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish ZAP Reports"
+        inputs:
+          pathToPublish: '$(System.DefaultWorkingDirectory)'
+          artifactName: 'zap-scan-results'
+          publishLocation: 'Container'

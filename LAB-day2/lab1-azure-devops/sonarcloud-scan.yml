@@ -1,0 +1,74 @@
+# 👇 Pipeline name (appears in Azure DevOps)
+name: Run-SonarQube-With-Maven
+
+# ----------------------------------------------------------
+# 🧭 Trigger Section
+# Defines when this pipeline should run.
+# "main" means this will trigger on every push to the main branch.
+# ----------------------------------------------------------
+trigger:
+  branches:
+    include:
+      - main
+
+# ----------------------------------------------------------
+# 🌍 Global Variables
+# You can define shared variables for the pipeline.
+# Sensitive values like SONAR_TOKEN should be stored securely
+# in Azure DevOps Library → Variable Groups (as secrets).
+# ----------------------------------------------------------
+variables:
+  sonarHostUrl: 'https://sonarcloud.io'
+  sonarProjectKey: 'project-name-on-sonar-cloud'
+  sonarOrganization: 'organisation-on-sonarcloud'
+  jdkVersion: '21'
+
+# ----------------------------------------------------------
+# ⚙️ Jobs Section
+# Defines what this pipeline will actually do.
+# Each job runs on a virtual machine agent.
+# ----------------------------------------------------------
+jobs:
+- job: BuildAndAnalyze
+  displayName: 'Build and Run SonarQube Analysis'
+  pool:
+    vmImage: 'ubuntu-latest'  # Uses Azure-hosted Ubuntu agent
+
+  steps:
+    # ------------------------------------------------------
+    # 🧱 Step 1: Checkout Code
+    # This step downloads your repository into the pipeline workspace.
+    # ------------------------------------------------------
+    - checkout: self
+
+    # ------------------------------------------------------
+    # ☕ Step 2: Set up JDK 21
+    # Azure DevOps has a built-in task to select a specific Java version.
+    # ------------------------------------------------------
+    - task: UseJavaVersion@1
+      displayName: 'Set up JDK 21'
+      inputs:
+        versionSpec: '$(jdkVersion)'   # Uses variable defined above
+        jdkArchitecture: 'x64'
+        jdkSourceOption: 'PreInstalled' # Uses built-in version on the agent
+
+    # ------------------------------------------------------
+    # ⚒️ Step 3: Build and Analyze with Maven + SonarCloud
+    # This step runs Maven in batch (-B) mode to verify the build
+    # and trigger SonarCloud analysis.
+    # ------------------------------------------------------
+    - script: |
+        echo "🔍 Running Maven build and SonarCloud scan..."
+        mvn -B verify sonar:sonar \
+          -Dsonar.projectKey=$(sonarProjectKey) \
+          -Dsonar.organization=$(sonarOrganization) \
+          -Dsonar.host.url=$(sonarHostUrl) \
+          -Dsonar.token=$(SONAR_TOKEN)
+      displayName: 'Build and Analyze with Maven (SonarCloud)'
+      env:
+        # --------------------------------------------------
+        # 🔑 Environment Variables
+        # SONAR_TOKEN: Store this securely in the Azure DevOps Library
+        #              (under Variable Groups → Mark as secret)
+        # --------------------------------------------------
+        SONAR_TOKEN: $(SONAR_TOKEN)

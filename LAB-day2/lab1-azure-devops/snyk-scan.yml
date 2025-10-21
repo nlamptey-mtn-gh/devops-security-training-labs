@@ -1,0 +1,71 @@
+# ----------------------------------------------------------
+# Azure DevOps Pipeline: Maven Snyk Scan
+# ----------------------------------------------------------
+# This pipeline runs on every push to the main branch.
+# It checks a Maven project for known vulnerabilities using Snyk.
+# ----------------------------------------------------------
+
+# Pipeline name
+name: Maven Snyk Security Scan
+
+# ----------------------------------------------------------
+# Trigger on every push to main branch
+# ----------------------------------------------------------
+trigger:
+  branches:
+    include:
+      - main
+
+# ----------------------------------------------------------
+# Use Ubuntu build agent
+# ----------------------------------------------------------
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ----------------------------------------------------------
+# Define variables
+# SNYK_TOKEN should be stored securely in Azure DevOps Library > Variables > Marked secret.
+# ----------------------------------------------------------
+variables:
+  - name: SNYK_TOKEN
+    value: $(SNYK_TOKEN)
+
+# ----------------------------------------------------------
+# Pipeline Steps
+# ----------------------------------------------------------
+steps:
+  # Step 1: Checkout the source code
+  - checkout: self
+    displayName: "Checkout repository"
+
+  # Step 2: Install Snyk CLI
+  - script: |
+      npm install -g snyk
+      snyk --version
+    displayName: "Install Snyk CLI"
+
+  # Step 3: Authenticate Snyk with the token
+  - script: snyk auth $(SNYK_TOKEN)
+    displayName: "Authenticate Snyk"
+
+  # Step 4: Run Snyk Maven dependency scan
+  # '|| true' ensures the pipeline continues even if vulnerabilities are found
+  - script: |
+      echo "Running Snyk scan for Maven project..."
+      snyk test --file=pom.xml || true
+    displayName: "Run Snyk Maven Scan"
+
+  # (Optional) Step 5: Generate and save an HTML report
+  - script: |
+      snyk test --file=pom.xml --json > snyk_report.json || true
+      snyk-to-html -i snyk_report.json -o snyk_report.html || true
+    displayName: "Generate Snyk HTML Report"
+    condition: succeededOrFailed()
+
+  # Step 6: Publish report artifact
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish Snyk Reports"
+    inputs:
+      pathToPublish: "$(System.DefaultWorkingDirectory)"
+      artifactName: "snyk-reports"
+      publishLocation: "Container"

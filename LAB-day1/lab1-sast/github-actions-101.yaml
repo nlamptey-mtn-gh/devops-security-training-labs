@@ -41,8 +41,8 @@ jobs:
       # Many workflows start by pulling the repository files.
       # Uncomment the line below if you need your repo files.
       # ----------------------------------------------------
-      # - name: Checkout repository
-      #   uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       # ----------------------------------------------------
       #  Step 2: Run a simple shell command
